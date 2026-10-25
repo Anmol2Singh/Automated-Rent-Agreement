@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const cases: AgreementCase[] = body.cases || [];
 
-    const excelBuffer = exportAgreementsToExcelBuffer(cases);
+    const excelBuffer = await exportAgreementsToExcelBuffer(cases);
 
     return new NextResponse(new Uint8Array(excelBuffer), {
       status: 200,

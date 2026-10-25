@@ -157,6 +157,8 @@ export default function IntakeWizard() {
 
   // Generated Token Result
   const [generatedToken, setGeneratedToken] = useState<string>('');
+  const [syncedToSheets, setSyncedToSheets] = useState<boolean>(true);
+  const [retryingSync, setRetryingSync] = useState<boolean>(false);
 
   // Live Calculated Total Fee
   const feeCalculation = useMemo(() => {
@@ -586,6 +588,7 @@ export default function IntakeWizard() {
       const resData = await res.json();
       if (resData.success) {
         setGeneratedToken(resData.tokenNumber);
+        setSyncedToSheets(resData.syncedToSheets ?? false);
         setStep(3);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
@@ -595,6 +598,26 @@ export default function IntakeWizard() {
       setErrorMessage('Network error occurred during submission. Please try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRetrySync = async () => {
+    if (!generatedToken) return;
+    setRetryingSync(true);
+    try {
+      const res = await fetch(`/api/cases/${generatedToken}/sync`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setSyncedToSheets(true);
+        setAiToast('✅ Successfully synced to Google Sheet!');
+        setTimeout(() => setAiToast(null), 4000);
+      } else {
+        alert(data.error || 'Sync failed. Please check Google Sheet Webhook URL.');
+      }
+    } catch (err) {
+      alert('Network error while retrying sync.');
+    } finally {
+      setRetryingSync(false);
     }
   };
 
@@ -2025,6 +2048,24 @@ export default function IntakeWizard() {
               {generatedToken}
             </span>
           </div>
+
+          {/* Sheet Sync Status Alert / Retry Button */}
+          {!syncedToSheets && (
+            <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-left shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold text-amber-900 block">Google Sheet Entry Pending</span>
+                <span className="text-[11px] text-amber-700">Your agreement is safely recorded in the database. You can retry pushing the row block to Google Sheets.</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleRetrySync}
+                disabled={retryingSync}
+                className="shrink-0 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs transition shadow-sm"
+              >
+                {retryingSync ? 'Syncing...' : 'Retry sync'}
+              </button>
+            </div>
+          )}
 
           {/* WhatsApp Confirmation Box */}
           <div className="text-left bg-slate-50 p-4 rounded-xl border border-slate-200 relative">
