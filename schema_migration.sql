@@ -56,16 +56,22 @@ CREATE INDEX IF NOT EXISTS idx_agreements_status ON public.agreements(status);
 CREATE INDEX IF NOT EXISTS idx_agreements_created_at ON public.agreements(created_at DESC);
 
 -- 4. ROW LEVEL SECURITY (RLS) HARDENING
--- Remove the open policy allowing anonymous public insert and select
+-- Remove open policies allowing unrestricted public read
 DROP POLICY IF EXISTS "Allow public insert and select" ON public.agreements;
 DROP POLICY IF EXISTS "Allow public read" ON public.agreements;
 DROP POLICY IF EXISTS "Allow public insert" ON public.agreements;
+DROP POLICY IF EXISTS "Allow public insert agreements" ON public.agreements;
 
 ALTER TABLE public.agreements ENABLE ROW LEVEL SECURITY;
 
--- Note: All backend operations (intake create, staff read/edit) run server-side
--- via SUPABASE_SERVICE_ROLE_KEY, which bypasses RLS automatically.
--- Public anon key access is strictly disallowed by leaving no anon policies.
+-- Allow public intake form to insert new agreements (works even if SUPABASE_SERVICE_ROLE_KEY is not yet added)
+-- Only INSERT is granted: SELECT/UPDATE/DELETE remain blocked for anon, keeping agreements private
+CREATE POLICY "Allow public insert agreements" ON public.agreements
+FOR INSERT TO anon, authenticated
+WITH CHECK (true);
+
+-- Allow token generation function execution
+GRANT EXECUTE ON FUNCTION public.generate_next_token(INT) TO anon, authenticated, service_role;
 
 -- 5. PRIVATE STORAGE BUCKET CONFIGURATION ('agreement-docs')
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)

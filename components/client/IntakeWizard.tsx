@@ -32,6 +32,7 @@ import {
   ArrowLeft,
   Loader2,
   ChevronDown,
+  X,
 } from 'lucide-react';
 
 interface PersonFormState {
@@ -967,7 +968,54 @@ export default function IntakeWizard() {
         </div>
       </div>
 
-      {/* Error Message Alert */}
+      {/* Floating Centered Error Pop-up Modal (Always visible wherever user has scrolled) */}
+      {errorMessage && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setErrorMessage('')}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl border border-red-200 max-w-md w-full p-6 space-y-4 animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-6 h-6 text-red-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-bold text-slate-900">Submission Notice</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Please check and resolve the following issue:</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setErrorMessage('')}
+                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition"
+                aria-label="Close"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-3.5 bg-red-50 rounded-xl border border-red-200 text-red-800 text-xs font-semibold leading-relaxed">
+              {errorMessage}
+            </div>
+
+            <div className="flex justify-end pt-1">
+              <button
+                type="button"
+                onClick={() => setErrorMessage('')}
+                className="w-full py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition shadow-md"
+              >
+                Dismiss & Review
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Message Inline Alert */}
       {errorMessage && (
         <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-xs font-semibold flex items-center gap-2 shadow-sm leading-relaxed">
           <AlertCircle className="w-5 h-5 shrink-0 text-red-500" />
