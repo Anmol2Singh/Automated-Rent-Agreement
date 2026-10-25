@@ -7,7 +7,7 @@ A production-ready full-stack automation system for rent agreement registration 
 ## Architecture Overview
 
 - **Frontend & Wizards**: Next.js 14 App Router, TypeScript, Tailwind CSS, Lucide Icons.
-- **AI Document Extraction**: Google Gemini Vision (`@google/generative-ai`) via `/api/extract` with client-side canvas image compression (max 1600px, JPEG 0.8), regex validation, age computation, and Aadhaar front/back merging.
+- **AI Document Extraction**: Google Gemini Vision (`@google/generative-ai`) and Groq Vision AI (`qwen/qwen3.8-27b`) fallback via `/api/extract` with client-side canvas image compression (max 1600px, JPEG 0.8), regex validation, age computation, and Aadhaar front/back merging.
 - **Database & Security**: Supabase PostgreSQL with locked-down Row Level Security (RLS), atomic sequence function `generate_next_token(year)`, private bucket `agreement-docs`, and masked Aadhaar/PAN logs.
 - **Google Sheets Integration**: 7-row block layout matching agency ledger format with green header row, yellow GRN cell, dynamic header mapping, and ExcelJS buffer export.
 - **Chrome Extension (Manifest V3)**: Resilient ASP.NET WebForms autofill with `Sys.WebForms.PageRequestManager` hook, typing simulation, Marathi sibling auto-transliteration verification, scan mode, and GRN header capture.
