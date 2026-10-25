@@ -155,6 +155,8 @@ export interface ExtractionResult {
     floorNo?: string;
     village?: string;
     surveyNo?: string;
+    hasBackSide?: boolean;
+    hasPanCard?: boolean;
   };
   confidence: number;
   warnings: string[];

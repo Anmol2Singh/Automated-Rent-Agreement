@@ -238,6 +238,25 @@ export default function IntakeWizard() {
           newAi.gender = true;
           newAi.salutation = true;
         }
+        if (f.nativeAddress) {
+          next.nativeAddress = f.nativeAddress;
+          newAi.nativeAddress = true;
+          if (isLowConfidence) newUnverified.nativeAddress = true;
+        }
+        if (f.address_en) {
+          next.address_en = { ...next.address_en, ...f.address_en };
+          newAi.address_en = true;
+          if (isLowConfidence || (f.address_en.pincode && !/^\d{6}$/.test(f.address_en.pincode))) {
+            newUnverified.pincode = true;
+          }
+        }
+        if (f.panNumber) {
+          next.pan = f.panNumber;
+          newAi.pan = true;
+          if (isLowConfidence || !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(f.panNumber)) {
+            newUnverified.pan = true;
+          }
+        }
       } else if (docType === 'aadhaar_back') {
         if (f.nativeAddress) {
           next.nativeAddress = f.nativeAddress;
@@ -357,6 +376,62 @@ export default function IntakeWizard() {
 
       if (extractedFieldCount > 0) {
         mergeExtractedData(target, docType, extractionResult);
+
+        // Auto-detect combined files (e.g. Aadhaar Front + Back or Front + Back + PAN in slot 1)
+        if (docType === 'aadhaar_front') {
+          const hasBack = Boolean(
+            extractionResult.fields.hasBackSide ||
+            (extractionResult.fields.nativeAddress && extractionResult.fields.nativeAddress.length > 8) ||
+            extractionResult.fields.address_en?.village_city
+          );
+          const hasPan = Boolean(
+            extractionResult.fields.hasPanCard ||
+            (extractionResult.fields.panNumber && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(extractionResult.fields.panNumber))
+          );
+
+          if (hasBack) {
+            if (target === 'landlord') {
+              setLandlordAadhaarBack(base64);
+            } else if (target === 'witness1') {
+              setWitness1AadhaarBack(base64);
+            } else if (target === 'witness2') {
+              setWitness2AadhaarBack(base64);
+            } else if (typeof target === 'number') {
+              setTenants((prev) => {
+                const c = [...prev];
+                if (c[target]) c[target] = { ...c[target], aadhaarBack: base64 };
+                return c;
+              });
+            }
+          }
+
+          if (hasPan) {
+            if (target === 'landlord') {
+              setLandlordPanFile(base64);
+            } else if (typeof target === 'number') {
+              setTenants((prev) => {
+                const c = [...prev];
+                if (c[target]) c[target] = { ...c[target], panFile: base64 };
+                return c;
+              });
+            }
+          }
+
+          if (hasBack && hasPan) {
+            setAiToast('🎉 All-in-One Document! Aadhaar Front, Back & PAN auto-detected & filled!');
+            setTimeout(() => setAiToast(null), 5500);
+            return;
+          } else if (hasBack) {
+            setAiToast('✨ Front & Back Detected! Aadhaar Front & Back auto-detected & filled.');
+            setTimeout(() => setAiToast(null), 5500);
+            return;
+          } else if (hasPan) {
+            setAiToast('✨ Aadhaar Front & PAN auto-detected in single document!');
+            setTimeout(() => setAiToast(null), 5500);
+            return;
+          }
+        }
+
         const info =
           extractionResult.fields.fullName ||
           extractionResult.fields.consumerName ||
@@ -1461,24 +1536,42 @@ export default function IntakeWizard() {
                 <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   {t.aadhaarBack} <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) =>
-                    handleFileUpload(
-                      e,
-                      'landlord_aadhaar_back',
-                      'aadhaar_back',
-                      'landlord',
-                      setLandlordAadhaarBack
-                    )
-                  }
-                  className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
-                />
-                {landlordAadhaarBack && (
-                  <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
-                    <Check className="w-3 h-3" /> Uploaded
-                  </span>
+                {landlordAadhaarBack && landlordAadhaarBack === landlordAadhaarFront ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs">
+                    <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      Auto-detected from 1st file
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setLandlordAadhaarBack('')}
+                      className="text-[10px] text-emerald-700 underline font-semibold mt-1 block"
+                    >
+                      Upload separate back side
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) =>
+                        handleFileUpload(
+                          e,
+                          'landlord_aadhaar_back',
+                          'aadhaar_back',
+                          'landlord',
+                          setLandlordAadhaarBack
+                        )
+                      }
+                      className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
+                    />
+                    {landlordAadhaarBack && (
+                      <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
+                        <Check className="w-3 h-3" /> Uploaded
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -1486,24 +1579,42 @@ export default function IntakeWizard() {
                 <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                   {t.panCard} <span className="text-red-500">*</span>
                 </label>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  onChange={(e) =>
-                    handleFileUpload(
-                      e,
-                      'landlord_pan',
-                      'pan',
-                      'landlord',
-                      setLandlordPanFile
-                    )
-                  }
-                  className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
-                />
-                {landlordPanFile && (
-                  <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
-                    <Check className="w-3 h-3" /> Uploaded
-                  </span>
+                {landlordPanFile && landlordPanFile === landlordAadhaarFront ? (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs">
+                    <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      Auto-detected from 1st file
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setLandlordPanFile('')}
+                      className="text-[10px] text-emerald-700 underline font-semibold mt-1 block"
+                    >
+                      Upload separate PAN card
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(e) =>
+                        handleFileUpload(
+                          e,
+                          'landlord_pan',
+                          'pan',
+                          'landlord',
+                          setLandlordPanFile
+                        )
+                      }
+                      className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
+                    />
+                    {landlordPanFile && (
+                      <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
+                        <Check className="w-3 h-3" /> Uploaded
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
             </div>
@@ -1664,29 +1775,53 @@ export default function IntakeWizard() {
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                       {t.aadhaarBack} <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="file"
-                      accept="image/*,.pdf"
-                      onChange={(e) =>
-                        handleFileUpload(
-                          e,
-                          `tenant_${idx}_aadhaar_back`,
-                          'aadhaar_back',
-                          idx,
-                          (b) =>
+                    {tenant.aadhaarBack && tenant.aadhaarBack === tenant.aadhaarFront ? (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs">
+                        <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          Auto-detected from 1st file
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
                             setTenants((prev) => {
                               const copy = [...prev];
-                              copy[idx] = { ...copy[idx], aadhaarBack: b };
+                              copy[idx] = { ...copy[idx], aadhaarBack: '' };
                               return copy;
                             })
-                        )
-                      }
-                      className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
-                    />
-                    {tenant.aadhaarBack && (
-                      <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
-                        <Check className="w-3 h-3" /> Uploaded
-                      </span>
+                          }
+                          className="text-[10px] text-emerald-700 underline font-semibold mt-1 block"
+                        >
+                          Upload separate back side
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) =>
+                            handleFileUpload(
+                              e,
+                              `tenant_${idx}_aadhaar_back`,
+                              'aadhaar_back',
+                              idx,
+                              (b) =>
+                                setTenants((prev) => {
+                                  const copy = [...prev];
+                                  copy[idx] = { ...copy[idx], aadhaarBack: b };
+                                  return copy;
+                                })
+                            )
+                          }
+                          className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
+                        />
+                        {tenant.aadhaarBack && (
+                          <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
+                            <Check className="w-3 h-3" /> Uploaded
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
 
@@ -1694,29 +1829,53 @@ export default function IntakeWizard() {
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                       {t.panCard} <span className="text-red-500">*</span>
                     </label>
-                    <input
-                      type="file"
-                      accept="image/*,.pdf"
-                      onChange={(e) =>
-                        handleFileUpload(
-                          e,
-                          `tenant_${idx}_pan`,
-                          'pan',
-                          idx,
-                          (b) =>
+                    {tenant.panFile && tenant.panFile === tenant.aadhaarFront ? (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs">
+                        <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          Auto-detected from 1st file
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
                             setTenants((prev) => {
                               const copy = [...prev];
-                              copy[idx] = { ...copy[idx], panFile: b };
+                              copy[idx] = { ...copy[idx], panFile: '' };
                               return copy;
                             })
-                        )
-                      }
-                      className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
-                    />
-                    {tenant.panFile && (
-                      <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
-                        <Check className="w-3 h-3" /> Uploaded
-                      </span>
+                          }
+                          className="text-[10px] text-emerald-700 underline font-semibold mt-1 block"
+                        >
+                          Upload separate PAN card
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="file"
+                          accept="image/*,.pdf"
+                          onChange={(e) =>
+                            handleFileUpload(
+                              e,
+                              `tenant_${idx}_pan`,
+                              'pan',
+                              idx,
+                              (b) =>
+                                setTenants((prev) => {
+                                  const copy = [...prev];
+                                  copy[idx] = { ...copy[idx], panFile: b };
+                                  return copy;
+                                })
+                            )
+                          }
+                          className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
+                        />
+                        {tenant.panFile && (
+                          <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
+                            <Check className="w-3 h-3" /> Uploaded
+                          </span>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -1891,24 +2050,42 @@ export default function IntakeWizard() {
                   <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Aadhaar Back <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    onChange={(e) =>
-                      handleFileUpload(
-                        e,
-                        'witness1_aadhaar_back',
-                        'aadhaar_back',
-                        'witness1',
-                        setWitness1AadhaarBack
-                      )
-                    }
-                    className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
-                  />
-                  {witness1AadhaarBack && (
-                    <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
-                      <Check className="w-3 h-3" /> Uploaded
-                    </span>
+                  {witness1AadhaarBack && witness1AadhaarBack === witness1AadhaarFront ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs">
+                      <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        Auto-detected from 1st file
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setWitness1AadhaarBack('')}
+                        className="text-[10px] text-emerald-700 underline font-semibold mt-1 block"
+                      >
+                        Upload separate back side
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) =>
+                          handleFileUpload(
+                            e,
+                            'witness1_aadhaar_back',
+                            'aadhaar_back',
+                            'witness1',
+                            setWitness1AadhaarBack
+                          )
+                        }
+                        className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
+                      />
+                      {witness1AadhaarBack && (
+                        <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
+                          <Check className="w-3 h-3" /> Uploaded
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1998,24 +2175,42 @@ export default function IntakeWizard() {
                   <label className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Aadhaar Back <span className="text-red-500">*</span>
                   </label>
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    onChange={(e) =>
-                      handleFileUpload(
-                        e,
-                        'witness2_aadhaar_back',
-                        'aadhaar_back',
-                        'witness2',
-                        setWitness2AadhaarBack
-                      )
-                    }
-                    className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
-                  />
-                  {witness2AadhaarBack && (
-                    <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
-                      <Check className="w-3 h-3" /> Uploaded
-                    </span>
+                  {witness2AadhaarBack && witness2AadhaarBack === witness2AadhaarFront ? (
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-xs">
+                      <span className="text-[11px] text-emerald-800 font-bold flex items-center gap-1">
+                        <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        Auto-detected from 1st file
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setWitness2AadhaarBack('')}
+                        className="text-[10px] text-emerald-700 underline font-semibold mt-1 block"
+                      >
+                        Upload separate back side
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        onChange={(e) =>
+                          handleFileUpload(
+                            e,
+                            'witness2_aadhaar_back',
+                            'aadhaar_back',
+                            'witness2',
+                            setWitness2AadhaarBack
+                          )
+                        }
+                        className="w-full text-xs text-slate-600 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-emerald-100 file:text-emerald-800 hover:file:bg-emerald-200"
+                      />
+                      {witness2AadhaarBack && (
+                        <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1 mt-1">
+                          <Check className="w-3 h-3" /> Uploaded
+                        </span>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

@@ -134,6 +134,21 @@ function formatParsedDocument(parsed: any): ExtractionResult {
     fields.address_en = address_en;
   }
 
+  if (
+    parsed.hasBackSide === true ||
+    (parsed.nativeAddress && String(parsed.nativeAddress).length > 10) ||
+    (parsed.addressParts && Object.keys(parsed.addressParts).length > 0)
+  ) {
+    fields.hasBackSide = true;
+  }
+
+  if (
+    parsed.hasPanCard === true ||
+    (fields.panNumber && /^[A-Z]{5}[0-9]{4}[A-Z]$/.test(fields.panNumber))
+  ) {
+    fields.hasPanCard = true;
+  }
+
   if (confidence < 0.85) {
     warnings.push('Low AI confidence rating (< 85%). Please verify extracted fields.');
   }
@@ -213,14 +228,28 @@ export async function processDocumentWithGemini(
   const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '');
 
   const docPrompts: Record<DocType, string> = {
-    aadhaar_front: `You are extracting data from an Indian Aadhaar Card (FRONT side).
-Extract:
-1. "fullName": exact English name printed on the card.
+    aadhaar_front: `You are extracting data from an Indian Identity Document (Aadhaar Card Front side, or a combined document containing Aadhaar Front + Back, or Aadhaar + PAN card on the same page/file).
+Carefully scan the entire document and extract:
+1. "fullName": exact English full name printed on the card.
 2. "dob": date of birth (e.g. DD/MM/YYYY) or year of birth.
 3. "gender": "Male", "Female", or "Others".
 4. "aadhaarNumber": 12-digit Aadhaar number (or masked, e.g. XXXX XXXX 1234).
-5. "confidence": estimated accuracy confidence score between 0.0 and 1.0.
-Output valid JSON only with keys: fullName, dob, gender, aadhaarNumber, confidence.`,
+5. "fatherHusbandName": father/husband name (C/O, S/O, W/O, D/O) if visible anywhere (especially from Aadhaar back or PAN).
+6. "nativeAddress": full address if back side of Aadhaar is visible on this document.
+7. "addressParts": {
+     "building": flat/society name if clearly present,
+     "road": street/road name,
+     "location": locality, area, or landmark,
+     "village_city": village or city name (e.g. Pune),
+     "district": district (e.g. Pune),
+     "state": state (e.g. Maharashtra),
+     "pincode": 6-digit postal code
+   } if back side of Aadhaar is present.
+8. "panNumber": 10-character alphanumeric PAN number (e.g. ABCDE1234F) IF a PAN card is also present on this document.
+9. "hasBackSide": true if the back side of Aadhaar is clearly visible/present, otherwise false.
+10. "hasPanCard": true if a PAN card is clearly visible/present, otherwise false.
+11. "confidence": estimated accuracy score between 0.0 and 1.0.
+Output valid JSON only with keys: fullName, dob, gender, aadhaarNumber, fatherHusbandName, nativeAddress, addressParts, panNumber, hasBackSide, hasPanCard, confidence.`,
 
     aadhaar_back: `You are extracting data from an Indian Aadhaar Card (BACK side).
 Extract:
