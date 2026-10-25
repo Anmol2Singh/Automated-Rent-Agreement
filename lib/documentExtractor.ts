@@ -170,7 +170,9 @@ async function extractWithGroq(
   if (!groqApiKey) return null;
 
   try {
-    const dataUrl = `data:${mimeType || 'image/jpeg'};base64,${cleanBase64}`;
+    const sanitizedBase64 = cleanBase64.replace(/\s+/g, '');
+    const safeMime = mimeType && mimeType.startsWith('image/') ? mimeType : 'image/jpeg';
+    const dataUrl = `data:${safeMime};base64,${sanitizedBase64}`;
     const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
