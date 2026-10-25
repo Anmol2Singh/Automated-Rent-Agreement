@@ -335,22 +335,29 @@ export default function IntakeWizard() {
         });
         const data = await res.json();
         extractionResult = data;
-        extractionCache.current[cacheKey] = data;
+        if (data?.fields && Object.keys(data.fields).length > 0) {
+          extractionCache.current[cacheKey] = data;
+        }
       }
 
-      if (extractionResult && extractionResult.fields) {
+      const extractedFieldCount = extractionResult?.fields ? Object.keys(extractionResult.fields).length : 0;
+
+      if (extractedFieldCount > 0) {
         mergeExtractedData(target, docType, extractionResult);
         const info =
           extractionResult.fields.fullName ||
           extractionResult.fields.consumerName ||
           extractionResult.fields.aadhaarNumber ||
+          extractionResult.fields.panNumber ||
           'Document';
         setAiToast(`✨ AI Extracted: ${info}`);
         setTimeout(() => setAiToast(null), 4500);
-      }
-
-      if (extractionResult?.warnings && extractionResult.warnings.length > 0) {
-        console.warn('Extraction notices:', extractionResult.warnings);
+      } else {
+        const warningMsg =
+          extractionResult?.warnings?.[0] ||
+          'AI could not read fields from this document. Please verify image clarity or enter details manually.';
+        setAiToast(`⚠️ ${warningMsg}`);
+        setTimeout(() => setAiToast(null), 5500);
       }
     } catch (err: any) {
       console.warn('Document extraction notice:', err);

@@ -63,10 +63,14 @@ export async function processDocumentWithGemini(
     };
   }
 
-  const configuredModel = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-  const candidateModels = [configuredModel, 'gemini-2.0-flash', 'gemini-1.5-pro'].filter(
-    (v, i, a) => a.indexOf(v) === i
-  );
+  const configuredModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+  const candidateModels = [
+    configuredModel,
+    'gemini-2.5-flash',
+    'gemini-flash-latest',
+    'gemini-2.5-pro',
+    'gemini-2.5-flash-lite',
+  ].filter((v, i, a) => a.indexOf(v) === i);
 
   const cleanBase64 = fileBase64.replace(/^data:[^;]+;base64,/, '');
 
