@@ -297,9 +297,21 @@ export default function IntakeWizard() {
         return copy;
       });
     } else if (target === 'property') {
-      if (f.buildingName && !buildingName) setBuildingName(f.buildingName);
-      if (f.flatNo && !flatNo) setFlatNo(f.flatNo);
-      if (f.nativeAddress && !village) setVillage(f.nativeAddress.split(',')[0] || '');
+      if (f.buildingName) setBuildingName(f.buildingName);
+      if (f.flatNo) setFlatNo(f.flatNo);
+      if (f.floorNo) setFloorNo(f.floorNo);
+      if (f.surveyNo) setSurveyNo(f.surveyNo);
+      if (f.village) {
+        setVillage(f.village);
+        setVillageIgr(f.village);
+      } else if (f.nativeAddress) {
+        const parts = f.nativeAddress.split(',').map((p) => p.trim());
+        const candidateVillage = parts.length > 1 ? parts[parts.length - 2] : parts[0];
+        if (candidateVillage) {
+          setVillage(candidateVillage);
+          setVillageIgr(candidateVillage);
+        }
+      }
     }
   };
 
@@ -1139,6 +1151,46 @@ export default function IntakeWizard() {
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs"
               />
+            </div>
+
+            {/* Upload Property Document (Electricity Bill / Index II) for Auto-Fill */}
+            <div className="col-span-1 md:col-span-2 bg-emerald-50/70 p-4 rounded-2xl border border-emerald-200 shadow-sm space-y-2">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                <label className="text-xs font-bold text-emerald-900 uppercase tracking-wider flex items-center gap-2">
+                  <Upload className="w-4 h-4 text-emerald-600" />
+                  {t.electricityBill} (or Property Tax / Index II)
+                  <span className="text-red-500">*</span>
+                </label>
+                {extractingCards['electricity_bill'] && (
+                  <span className="text-[11px] text-emerald-700 font-semibold flex items-center gap-1.5 animate-pulse">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> AI Extracting Property Details...
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Upload your electricity bill or property document to automatically extract and fill Building Name, Flat No, Floor, Village, and Survey details below.
+              </p>
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 pt-1">
+                <input
+                  type="file"
+                  accept="image/*,.pdf"
+                  onChange={(e) =>
+                    handleFileUpload(
+                      e,
+                      'electricity_bill',
+                      'electricity_bill',
+                      'property',
+                      setElectricityBill
+                    )
+                  }
+                  className="w-full text-xs text-slate-600 file:mr-2 file:py-2 file:px-3.5 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-emerald-600 file:text-white hover:file:bg-emerald-700 file:cursor-pointer file:transition"
+                />
+                {electricityBill && (
+                  <span className="text-xs text-emerald-700 font-bold flex items-center gap-1 whitespace-nowrap bg-emerald-100 px-3 py-1.5 rounded-lg border border-emerald-300">
+                    <Check className="w-4 h-4 text-emerald-600" /> Uploaded & Populated
+                  </span>
+                )}
+              </div>
             </div>
 
             <div>

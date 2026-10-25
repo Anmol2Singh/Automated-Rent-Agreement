@@ -110,14 +110,17 @@ Extract:
 5. "confidence": estimated accuracy score between 0.0 and 1.0.
 Output valid JSON only with keys: panNumber, fullName, fatherHusbandName, dob, confidence.`,
 
-    electricity_bill: `You are extracting data from a Maharashtra Electricity Bill (MSEDCL/Adani/Tata).
+    electricity_bill: `You are extracting data from an Indian / Maharashtra Property Document (Electricity Bill, Index II, Sale Deed, Property Tax, or Maintenance Receipt).
 Extract:
-1. "consumerName": name of the consumer / billing party.
-2. "nativeAddress": complete billing address.
-3. "flatNo": flat, shop or gala number if listed.
-4. "buildingName": building or society name if listed.
-5. "confidence": estimated accuracy score between 0.0 and 1.0.
-Output valid JSON only with keys: consumerName, nativeAddress, flatNo, buildingName, confidence.`,
+1. "buildingName": building, apartment, wing, or society name.
+2. "flatNo": flat, apartment, shop, unit or gala number.
+3. "floorNo": floor number if mentioned.
+4. "village": village, locality, town, or area name (e.g. Wagholi, Wakad, Kharadi, Hinjewadi, Hadapsar, Kothrud, Pune, etc.).
+5. "surveyNo": survey number, CTS number, or Gat number if mentioned.
+6. "consumerName": name of the owner / consumer / billing party.
+7. "nativeAddress": full address printed on the document.
+8. "confidence": estimated accuracy score between 0.0 and 1.0.
+Output valid JSON only with keys: buildingName, flatNo, floorNo, village, surveyNo, consumerName, nativeAddress, confidence.`,
   };
 
   const prompt = `${docPrompts[docType] || docPrompts.aadhaar_front}
@@ -207,6 +210,8 @@ Do not enclose in markdown block quotes. Respond ONLY with a valid JSON object.`
       if (parsed.buildingName) fields.buildingName = String(parsed.buildingName).trim();
       if (parsed.flatNo) fields.flatNo = String(parsed.flatNo).trim();
       if (parsed.floorNo) fields.floorNo = String(parsed.floorNo).trim();
+      if (parsed.surveyNo) fields.surveyNo = String(parsed.surveyNo).trim();
+      if (parsed.village) fields.village = String(parsed.village).trim();
 
       if (parsed.addressParts) {
         const parts = parsed.addressParts;

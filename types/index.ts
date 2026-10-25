@@ -153,6 +153,8 @@ export interface ExtractionResult {
     buildingName?: string;
     flatNo?: string;
     floorNo?: string;
+    village?: string;
+    surveyNo?: string;
   };
   confidence: number;
   warnings: string[];
