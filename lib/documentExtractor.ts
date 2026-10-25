@@ -49,20 +49,158 @@ export function computeAge(dobStr?: string): string {
   return '';
 }
 
+function formatParsedDocument(parsed: any): ExtractionResult {
+  const warnings: string[] = [];
+  let confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0.9;
+  if (confidence > 1.0) confidence = confidence / 100;
+
+  const fields: ExtractionResult['fields'] = {};
+
+  if (parsed.fullName) {
+    const cleanName = String(parsed.fullName).trim();
+    fields.fullName = cleanName;
+    fields.name_en = splitNameMaharashtrian(cleanName);
+  }
+
+  if (parsed.consumerName) {
+    fields.consumerName = String(parsed.consumerName).trim();
+  }
+
+  if (parsed.aadhaarNumber) {
+    const cleanAadhaar = String(parsed.aadhaarNumber).replace(/\s+/g, '');
+    fields.aadhaarNumber = cleanAadhaar;
+    if (!/^\d{12}$/.test(cleanAadhaar) && !/^[X\d]{12}$/i.test(cleanAadhaar)) {
+      warnings.push('Aadhaar number should be exactly 12 digits or standard masked format.');
+      if (confidence >= 0.85) confidence = 0.8;
+    }
+  }
+
+  if (parsed.panNumber) {
+    const cleanPan = String(parsed.panNumber).toUpperCase().trim();
+    fields.panNumber = cleanPan;
+    if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(cleanPan)) {
+      warnings.push('PAN number does not match standard 10-character format (5 letters, 4 digits, 1 letter).');
+      if (confidence >= 0.85) confidence = 0.8;
+    }
+  }
+
+  if (parsed.dob) {
+    fields.dob = String(parsed.dob).trim();
+    const derivedAge = computeAge(fields.dob);
+    if (derivedAge) {
+      fields.age = derivedAge;
+    }
+  }
+
+  if (parsed.gender) {
+    const g = String(parsed.gender).trim();
+    fields.gender = g.toLowerCase().startsWith('f') ? 'Female' : 'Male';
+    fields.salutation = deriveSalutation(fields.gender);
+  }
+
+  if (parsed.fatherHusbandName) {
+    fields.fatherHusbandName = String(parsed.fatherHusbandName).trim();
+  }
+
+  if (parsed.nativeAddress) {
+    fields.nativeAddress = String(parsed.nativeAddress).trim();
+  }
+
+  if (parsed.buildingName) fields.buildingName = String(parsed.buildingName).trim();
+  if (parsed.flatNo) fields.flatNo = String(parsed.flatNo).trim();
+  if (parsed.floorNo) fields.floorNo = String(parsed.floorNo).trim();
+  if (parsed.surveyNo) fields.surveyNo = String(parsed.surveyNo).trim();
+  if (parsed.village) fields.village = String(parsed.village).trim();
+
+  if (parsed.addressParts) {
+    const parts = parsed.addressParts;
+    const address_en: AddressSplit = {
+      building: parts.building || fields.buildingName || '',
+      flat_no: parts.flat_no || fields.flatNo || '',
+      floor_no: parts.floor_no || fields.floorNo || '',
+      road: parts.road || '',
+      location: parts.location || '',
+      pincode: parts.pincode ? String(parts.pincode).replace(/\D/g, '').slice(0, 6) : '',
+      village_city: parts.village_city || '',
+      district: parts.district || 'Pune',
+      state: parts.state || 'Maharashtra',
+    };
+
+    if (address_en.pincode && !/^\d{6}$/.test(address_en.pincode)) {
+      warnings.push('Pincode should be exactly 6 digits.');
+      if (confidence >= 0.85) confidence = 0.8;
+    }
+
+    fields.address_en = address_en;
+  }
+
+  if (confidence < 0.85) {
+    warnings.push('Low AI confidence rating (< 85%). Please verify extracted fields.');
+  }
+
+  return {
+    fields,
+    confidence: Math.round(confidence * 100) / 100,
+    warnings,
+  };
+}
+
+async function extractWithGroq(
+  cleanBase64: string,
+  mimeType: string,
+  prompt: string
+): Promise<any | null> {
+  const rawKey = process.env.GROQ_API_KEY || '';
+  const groqApiKey = rawKey.trim().replace(/^["']|["']$/g, '');
+  if (!groqApiKey) return null;
+
+  try {
+    const dataUrl = `data:${mimeType || 'image/jpeg'};base64,${cleanBase64}`;
+    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${groqApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'qwen/qwen3.8-27b',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: prompt },
+              { type: 'image_url', image_url: { url: dataUrl } },
+            ],
+          },
+        ],
+        temperature: 0.1,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.warn('Groq Vision API error:', res.status, errText);
+      return null;
+    }
+
+    const data = await res.json();
+    const rawContent = data.choices?.[0]?.message?.content?.trim();
+    if (!rawContent) return null;
+    const cleanJson = rawContent.replace(/```json/gi, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanJson);
+  } catch (err: any) {
+    console.warn('Groq fallback error:', err?.message || err);
+    return null;
+  }
+}
+
 export async function processDocumentWithGemini(
   fileBase64: string,
   mimeType: string,
   docType: DocType
 ): Promise<ExtractionResult> {
   const apiKey = process.env.GEMINI_API_KEY || '';
-  if (!apiKey) {
-    return {
-      fields: {},
-      confidence: 0,
-      warnings: ['GEMINI_API_KEY is not configured in the server environment.'],
-    };
-  }
-
   const configuredModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
   const candidateModels = [
     configuredModel,
@@ -133,121 +271,49 @@ Do not enclose in markdown block quotes. Respond ONLY with a valid JSON object.`
     },
   };
 
+  let parsed: any = null;
   let lastError: any = null;
 
-  for (const modelName of candidateModels) {
-    try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.1,
-        },
-      });
+  // 1. Try Gemini models
+  if (apiKey) {
+    for (const modelName of candidateModels) {
+      try {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: {
+            responseMimeType: 'application/json',
+            temperature: 0.1,
+          },
+        });
 
-      const response = await model.generateContent([prompt, inlinePart]);
-      const rawText = response.response.text().trim();
-      const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
-
-      const warnings: string[] = [];
-      let confidence = typeof parsed.confidence === 'number' ? parsed.confidence : 0.90;
-      if (confidence > 1.0) confidence = confidence / 100;
-
-      const fields: ExtractionResult['fields'] = {};
-
-      if (parsed.fullName) {
-        const cleanName = String(parsed.fullName).trim();
-        fields.fullName = cleanName;
-        fields.name_en = splitNameMaharashtrian(cleanName);
+        const response = await model.generateContent([prompt, inlinePart]);
+        const rawText = response.response.text().trim();
+        const cleanJson = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+        parsed = JSON.parse(cleanJson);
+        if (parsed) break;
+      } catch (err: any) {
+        lastError = err;
+        console.warn(`Extraction error with Gemini model ${modelName}:`, err?.message || err);
       }
-
-      if (parsed.consumerName) {
-        fields.consumerName = parsed.consumerName.trim();
-      }
-
-      if (parsed.aadhaarNumber) {
-        const cleanAadhaar = String(parsed.aadhaarNumber).replace(/\s+/g, '');
-        fields.aadhaarNumber = cleanAadhaar;
-        if (!/^\d{12}$/.test(cleanAadhaar) && !/^[X\d]{12}$/i.test(cleanAadhaar)) {
-          warnings.push('Aadhaar number should be exactly 12 digits or standard masked format.');
-          if (confidence >= 0.85) confidence = 0.80;
-        }
-      }
-
-      if (parsed.panNumber) {
-        const cleanPan = String(parsed.panNumber).toUpperCase().trim();
-        fields.panNumber = cleanPan;
-        if (!/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(cleanPan)) {
-          warnings.push('PAN number does not match standard 10-character format (5 letters, 4 digits, 1 letter).');
-          if (confidence >= 0.85) confidence = 0.80;
-        }
-      }
-
-      if (parsed.dob) {
-        fields.dob = String(parsed.dob).trim();
-        const derivedAge = computeAge(fields.dob);
-        if (derivedAge) {
-          fields.age = derivedAge;
-        }
-      }
-
-      if (parsed.gender) {
-        const g = String(parsed.gender).trim();
-        fields.gender = g.toLowerCase().startsWith('f') ? 'Female' : 'Male';
-        fields.salutation = deriveSalutation(fields.gender);
-      }
-
-      if (parsed.fatherHusbandName) {
-        fields.fatherHusbandName = String(parsed.fatherHusbandName).trim();
-      }
-
-      if (parsed.nativeAddress) {
-        fields.nativeAddress = String(parsed.nativeAddress).trim();
-      }
-
-      if (parsed.buildingName) fields.buildingName = String(parsed.buildingName).trim();
-      if (parsed.flatNo) fields.flatNo = String(parsed.flatNo).trim();
-      if (parsed.floorNo) fields.floorNo = String(parsed.floorNo).trim();
-      if (parsed.surveyNo) fields.surveyNo = String(parsed.surveyNo).trim();
-      if (parsed.village) fields.village = String(parsed.village).trim();
-
-      if (parsed.addressParts) {
-        const parts = parsed.addressParts;
-        const address_en: AddressSplit = {
-          building: parts.building || fields.buildingName || '',
-          flat_no: parts.flat_no || fields.flatNo || '',
-          floor_no: parts.floor_no || fields.floorNo || '',
-          road: parts.road || '',
-          location: parts.location || '',
-          pincode: parts.pincode ? String(parts.pincode).replace(/\D/g, '').slice(0, 6) : '',
-          village_city: parts.village_city || '',
-          district: parts.district || 'Pune',
-          state: parts.state || 'Maharashtra',
-        };
-
-        if (address_en.pincode && !/^\d{6}$/.test(address_en.pincode)) {
-          warnings.push('Pincode should be exactly 6 digits.');
-          if (confidence >= 0.85) confidence = 0.80;
-        }
-
-        fields.address_en = address_en;
-      }
-
-      if (confidence < 0.85) {
-        warnings.push('Low AI confidence rating (< 85%). Please verify extracted fields.');
-      }
-
-      return {
-        fields,
-        confidence: Math.round(confidence * 100) / 100,
-        warnings,
-      };
-    } catch (err: any) {
-      lastError = err;
-      console.warn(`Extraction error with model ${modelName}:`, err?.message || err);
     }
+  }
+
+  // 2. Automatic fallback to Groq Vision AI (qwen/qwen3.8-27b) if Gemini failed or quota reached
+  if (!parsed && process.env.GROQ_API_KEY) {
+    console.info('Falling back to Groq Vision AI (qwen/qwen3.8-27b)...');
+    try {
+      parsed = await extractWithGroq(cleanBase64, mimeType, prompt);
+      if (parsed) {
+        console.info('Successfully extracted document details using Groq Vision AI.');
+      }
+    } catch (groqErr: any) {
+      console.warn('Groq extraction error:', groqErr?.message || groqErr);
+    }
+  }
+
+  if (parsed) {
+    return formatParsedDocument(parsed);
   }
 
   return {
@@ -255,8 +321,8 @@ Do not enclose in markdown block quotes. Respond ONLY with a valid JSON object.`
     confidence: 0,
     warnings: [
       lastError?.message
-        ? `Document extraction failed: ${lastError.message}`
-        : 'Could not extract text from document. Please verify image clarity or type manually.',
+        ? `Document extraction notice: ${lastError.message}`
+        : 'Could not extract text from document. Please verify image clarity or enter details manually.',
     ],
   };
 }
