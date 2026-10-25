@@ -80,12 +80,7 @@ ON CONFLICT (id) DO UPDATE SET
     public = FALSE,
     file_size_limit = 20971520;
 
--- Ensure storage objects table has RLS enabled
-ALTER TABLE storage.objects ENABLE ROW LEVEL SECURITY;
-
--- Prevent anonymous direct reads or writes to the private agreement-docs bucket
-DROP POLICY IF EXISTS "Public can view agreement docs" ON storage.objects;
-DROP POLICY IF EXISTS "Public can upload agreement docs" ON storage.objects;
-
--- Only service role has full access to the bucket
+-- Note: Bucket is created with public = FALSE above, which ensures complete privacy.
+-- Storage RLS is enabled by default by Supabase storage engine.
+-- Only service role has access to private bucket 'agreement-docs'.
 -- ====================================================================
