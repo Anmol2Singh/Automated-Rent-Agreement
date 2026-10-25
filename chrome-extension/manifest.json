@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Pune Rent Agreement IGR Maharashtra Auto-Filler",
-  "version": "1.0.0",
-  "description": "Auto-fills standard Maharashtra IGR e-registration web forms from Pune Agency exported JSON tokens.",
+  "version": "2.0.0",
+  "description": "Auto-fills Maharashtra IGR e-filing WebForms with auto-postback handling, sibling Marathi verification, and GRN capture.",
   "permissions": ["activeTab", "scripting", "storage"],
   "action": {
     "default_popup": "popup.html",
@@ -11,7 +11,20 @@
   "content_scripts": [
     {
       "matches": ["https://efilingigr.maharashtra.gov.in/*", "http://localhost:*/*"],
-      "js": ["content.js"]
+      "js": ["webforms-hook.js"],
+      "world": "MAIN",
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://efilingigr.maharashtra.gov.in/*", "http://localhost:*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["igr-field-map.json"],
+      "matches": ["https://efilingigr.maharashtra.gov.in/*", "http://localhost:*/*"]
     }
   ]
 }

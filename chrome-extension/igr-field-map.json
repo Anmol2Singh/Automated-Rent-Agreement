@@ -1,0 +1,303 @@
+{
+  "version": "1.0.0",
+  "description": "Maharashtra IGR e-filing portal field selectors, labels, auto-postback markers, and option aliases.",
+  "property": {
+    "taluka": {
+      "label": "Taluka",
+      "fillMode": "select",
+      "hasAutoPostBack": true,
+      "idPatterns": ["ddlTaluka", "cmbTaluka"]
+    },
+    "village": {
+      "label": "Village",
+      "fillMode": "select",
+      "hasAutoPostBack": true,
+      "idPatterns": ["ddlVillage", "cmbVillage"]
+    },
+    "propertyInArea": {
+      "label": "Property in Area",
+      "fillMode": "radio",
+      "defaultValue": "Urban",
+      "idPatterns": ["rdoArea", "rdoPropertyArea"]
+    },
+    "localLimitType": {
+      "label": "Local limit type",
+      "fillMode": "select",
+      "hasAutoPostBack": true,
+      "defaultValue": "Corporation",
+      "idPatterns": ["ddlLocalLimitType"]
+    },
+    "localLimitName": {
+      "label": "Local limit name",
+      "fillMode": "select",
+      "defaultValue": "Pune",
+      "idPatterns": ["ddlLocalLimitName"]
+    },
+    "attribute1Type": {
+      "label": "Attribute 1 type",
+      "fillMode": "select",
+      "defaultValue": "Survey Number",
+      "idPatterns": ["ddlAttr1Type", "ddlAttribute1"]
+    },
+    "attribute1Number": {
+      "label": "Attribute 1 number",
+      "fillMode": "type",
+      "english": "txtAttr1Number",
+      "marathiSibling": "txtAttr1Number_mr",
+      "idPatterns": ["txtAttr1No", "txtSurveyNo"]
+    },
+    "unitType": {
+      "label": "Type of Unit",
+      "fillMode": "select",
+      "defaultValue": "Apartment/Flat",
+      "idPatterns": ["ddlUnitType", "ddlTypeOfUnit"]
+    },
+    "unitArea": {
+      "label": "Unit Area",
+      "fillMode": "set",
+      "idPatterns": ["txtUnitArea", "txtArea"]
+    },
+    "unitAreaUom": {
+      "label": "Unit Area Unit",
+      "fillMode": "select",
+      "defaultValue": "Square Feet",
+      "idPatterns": ["ddlAreaUom", "ddlUnitAreaUnit"]
+    },
+    "building": {
+      "label": "Building Name",
+      "fillMode": "type",
+      "english": "txtBuildingName",
+      "marathiSibling": "txtBuildingName_mr",
+      "idPatterns": ["txtBuildingName", "txtSocietyName"]
+    },
+    "flatNo": {
+      "label": "Flat / Unit No",
+      "fillMode": "type",
+      "english": "txtFlatNo",
+      "marathiSibling": "txtFlatNo_mr",
+      "idPatterns": ["txtFlatNo", "txtUnitNo"]
+    },
+    "floorNo": {
+      "label": "Floor",
+      "fillMode": "type",
+      "english": "txtFloor",
+      "marathiSibling": "txtFloor_mr",
+      "idPatterns": ["txtFloor", "txtFloorNo"]
+    },
+    "road": {
+      "label": "Road",
+      "fillMode": "type",
+      "english": "txtRoad",
+      "marathiSibling": "txtRoad_mr",
+      "idPatterns": ["txtRoad", "txtStreet"]
+    },
+    "location": {
+      "label": "Location / Landmark",
+      "fillMode": "type",
+      "english": "txtLocation",
+      "marathiSibling": "txtLocation_mr",
+      "idPatterns": ["txtLocation", "txtLandmark"]
+    },
+    "use": {
+      "label": "Use",
+      "fillMode": "radio",
+      "defaultValue": "Residential",
+      "idPatterns": ["rdoUse", "rdoPropertyUse"]
+    },
+    "galleryArea": {
+      "label": "Gallery",
+      "fillMode": "set",
+      "defaultValue": "0",
+      "idPatterns": ["txtGalleryArea"]
+    },
+    "parkingArea": {
+      "label": "Parking",
+      "fillMode": "set",
+      "defaultValue": "0",
+      "idPatterns": ["txtParkingArea"]
+    },
+    "policeStation": {
+      "label": "Property Police Station",
+      "fillMode": "select",
+      "idPatterns": ["ddlPoliceStation"]
+    }
+  },
+  "party": {
+    "partyOrIdentifier": {
+      "label": "Party / Identifier",
+      "fillMode": "radio",
+      "idPatterns": ["rdoPartyIdentifier", "rdoPartyType"]
+    },
+    "partyNumber": {
+      "label": "Party Number",
+      "fillMode": "select",
+      "hasAutoPostBack": true,
+      "idPatterns": ["ddlPartyNo", "ddlPartyNumber"]
+    },
+    "partyType": {
+      "label": "Party Type",
+      "fillMode": "select",
+      "idPatterns": ["ddlPartyType", "ddlTypeOfParty"]
+    },
+    "partyEntityType": {
+      "label": "Party Entity Type",
+      "fillMode": "select",
+      "defaultValue": "Individual",
+      "idPatterns": ["ddlEntityType"]
+    },
+    "surname": {
+      "label": "Surname",
+      "fillMode": "type",
+      "english": "txtSurname",
+      "marathiSibling": "txtSurname_mr",
+      "idPatterns": ["txtSurname", "txtLastName"]
+    },
+    "first": {
+      "label": "First Name",
+      "fillMode": "type",
+      "english": "txtFirstName",
+      "marathiSibling": "txtFirstName_mr",
+      "idPatterns": ["txtFirstName"]
+    },
+    "middle": {
+      "label": "Middle Name",
+      "fillMode": "type",
+      "english": "txtMiddleName",
+      "marathiSibling": "txtMiddleName_mr",
+      "idPatterns": ["txtMiddleName"]
+    },
+    "age": {
+      "label": "Age",
+      "fillMode": "set",
+      "idPatterns": ["txtAge"]
+    },
+    "gender": {
+      "label": "Gender",
+      "fillMode": "radio",
+      "idPatterns": ["rdoGender"]
+    },
+    "salutation": {
+      "label": "Salutation",
+      "fillMode": "select",
+      "idPatterns": ["ddlSalutation", "ddlTitle"]
+    },
+    "pan": {
+      "label": "PAN",
+      "fillMode": "set",
+      "idPatterns": ["txtPAN", "txtPanNo"]
+    },
+    "contact": {
+      "label": "Contact / Mobile",
+      "fillMode": "set",
+      "idPatterns": ["txtContact", "txtMobile"]
+    },
+    "email": {
+      "label": "Email",
+      "fillMode": "set",
+      "idPatterns": ["txtEmail"]
+    },
+    "address": {
+      "building": {
+        "label": "Building",
+        "fillMode": "type",
+        "english": "txtAddrBuilding",
+        "marathiSibling": "txtAddrBuilding_mr",
+        "idPatterns": ["txtAddrBuilding", "txtPartyBuilding"]
+      },
+      "flatNo": {
+        "label": "Flat No",
+        "fillMode": "type",
+        "english": "txtAddrFlat",
+        "marathiSibling": "txtAddrFlat_mr",
+        "idPatterns": ["txtAddrFlat", "txtPartyFlat"]
+      },
+      "floorNo": {
+        "label": "Floor",
+        "fillMode": "type",
+        "english": "txtAddrFloor",
+        "marathiSibling": "txtAddrFloor_mr",
+        "idPatterns": ["txtAddrFloor", "txtPartyFloor"]
+      },
+      "road": {
+        "label": "Road",
+        "fillMode": "type",
+        "english": "txtAddrRoad",
+        "marathiSibling": "txtAddrRoad_mr",
+        "idPatterns": ["txtAddrRoad", "txtPartyRoad"]
+      },
+      "location": {
+        "label": "Location",
+        "fillMode": "type",
+        "english": "txtAddrLocation",
+        "marathiSibling": "txtAddrLocation_mr",
+        "idPatterns": ["txtAddrLocation", "txtPartyLocation"]
+      },
+      "pincode": {
+        "label": "Pin Code",
+        "fillMode": "set",
+        "idPatterns": ["txtAddrPinCode", "txtPinCode"]
+      },
+      "villageCity": {
+        "label": "Village / City",
+        "fillMode": "type",
+        "english": "txtAddrVillage",
+        "marathiSibling": "txtAddrVillage_mr",
+        "idPatterns": ["txtAddrVillage", "txtVillageCity"]
+      },
+      "district": {
+        "label": "District",
+        "fillMode": "type",
+        "english": "txtAddrDistrict",
+        "marathiSibling": "txtAddrDistrict_mr",
+        "idPatterns": ["txtAddrDistrict", "txtDistrict"]
+      },
+      "state": {
+        "label": "State",
+        "fillMode": "type",
+        "english": "txtAddrState",
+        "marathiSibling": "txtAddrState_mr",
+        "idPatterns": ["txtAddrState", "txtState"]
+      }
+    },
+    "executing": {
+      "label": "Executing",
+      "fillMode": "select",
+      "defaultValue": "Self",
+      "idPatterns": ["ddlExecuting"]
+    },
+    "documentPresentor": {
+      "label": "Document Presentor",
+      "fillMode": "checkbox",
+      "idPatterns": ["chkDocumentPresentor", "chkPresentor"]
+    }
+  },
+  "identifier": {
+    "identifierNumber": {
+      "label": "Identifier Number",
+      "fillMode": "select",
+      "hasAutoPostBack": true,
+      "idPatterns": ["ddlIdentifierNo", "ddlWitnessNo"]
+    },
+    "forWhichParty": {
+      "label": "For Which Party",
+      "fillMode": "select",
+      "defaultValue": "All Parties",
+      "idPatterns": ["ddlForWhichParty"]
+    }
+  },
+  "optionAliases": {
+    "unitType": {
+      "Flat": ["Apartment/Flat", "Flat", "Residential Flat", "Apartment"],
+      "Room": ["Room", "Tenement", "Single Room"],
+      "Shop": ["Shop", "Commercial Shop", "Gala"]
+    },
+    "partyType": {
+      "owner": ["licensor/Owner", "Licensor", "Owner", "First Party"],
+      "tenant": ["licencee/Tenant", "Licensee", "Tenant", "Second Party"]
+    },
+    "areaType": {
+      "Urban": ["Urban", "Muncipal / Corporation", "Pune Corporation"],
+      "Rural": ["Rural", "Grampanchayat"]
+    }
+  }
+}

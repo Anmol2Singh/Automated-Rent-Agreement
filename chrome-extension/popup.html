@@ -2,34 +2,189 @@
 <html>
 <head>
   <meta charset="utf-8">
+  <title>Pune IGR Auto-Filler</title>
   <style>
-    body { width: 280px; font-family: system-ui, sans-serif; padding: 12px; background: #ffffff; color: #0f172a; }
-    h3 { margin-top: 0; color: #059669; font-size: 14px; }
-    textarea { width: 100%; height: 90px; background: #f8fafc; color: #0f172a; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; font-size: 11px; font-family: monospace; }
-    button { width: 100%; margin-top: 8px; background: #059669; color: #ffffff; font-weight: bold; border: none; padding: 8px; border-radius: 8px; cursor: pointer; }
-    button:hover { background: #047857; }
+    body {
+      width: 360px;
+      margin: 0;
+      padding: 14px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f8fafc;
+      color: #0f172a;
+      font-size: 12px;
+    }
+    h2 {
+      margin: 0 0 4px 0;
+      font-size: 14px;
+      font-weight: 800;
+      color: #065f46;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: bold;
+      padding: 2px 6px;
+      border-radius: 999px;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+    }
+    label {
+      font-size: 10px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 3px;
+    }
+    input, select, textarea {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 6px 8px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 11px;
+      margin-bottom: 6px;
+      background: #fdfdfd;
+    }
+    button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 7px 10px;
+      border-radius: 6px;
+      border: none;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: #059669; color: #ffffff; }
+    .btn-primary:hover { background: #047857; }
+    .btn-secondary { background: #f1f5f9; color: #334155; border: 1px solid #cbd5e1; margin-top: 5px; }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .btn-amber { background: #d97706; color: #ffffff; margin-top: 5px; }
+    .btn-amber:hover { background: #b45309; }
+    .checklist-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 5px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 11px;
+    }
+    .checklist-item:last-child { border-bottom: none; }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #cbd5e1;
+      display: inline-block;
+      margin-right: 6px;
+    }
+    .dot-ready { background: #10b981; }
+    .dot-warn { background: #f59e0b; }
+    .dot-err { background: #ef4444; }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: #334155;
+      margin: 8px 0;
+    }
+    .results-box {
+      max-height: 120px;
+      overflow-y: auto;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 6px 8px;
+      font-size: 10px;
+      font-family: monospace;
+    }
+    .item-green { color: #047857; font-weight: bold; }
+    .item-red { color: #b91c1c; font-weight: bold; }
+    .item-amber { color: #b45309; font-weight: bold; }
   </style>
 </head>
 <body>
-  <h3>Pune Rent Agreement Auto-Fill</h3>
-  <p style="font-size: 11px; color: #64748b;">Paste exported IGR JSON packet below:</p>
-  <textarea id="jsonInput" placeholder='{"header": {...}, "licensor": {...}}'></textarea>
-  <button id="btnFill">Auto-Fill Form</button>
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+    <h2>IGR Maharashtra Auto-Fill</h2>
+    <span class="badge">MV3 WebForms</span>
+  </div>
 
-  <script>
-    document.getElementById('btnFill').addEventListener('click', () => {
-      try {
-        const raw = document.getElementById('jsonInput').value;
-        const parsed = JSON.parse(raw);
-        chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-          if (tabs[0]?.id) {
-            chrome.tabs.sendMessage(tabs[0].id, { action: "AUTOFILL_IGR", data: parsed });
-          }
-        });
-      } catch(e) {
-        alert("Invalid JSON format");
-      }
-    });
-  </script>
+  <!-- Connection & Case Selection Card -->
+  <div class="card">
+    <label>Case Token Number</label>
+    <div style="display: flex; gap: 4px;">
+      <input type="text" id="tokenInput" placeholder="PNE-2026-0001" style="margin-bottom: 0;">
+      <button id="btnLoadCase" class="btn-primary" style="width: auto; padding: 6px 12px;">Load</button>
+    </div>
+    
+    <details style="margin-top: 6px; font-size: 10px; color: #64748b;">
+      <summary style="cursor: pointer;">Backend Config / Staff Key</summary>
+      <div style="margin-top: 4px;">
+        <label>Backend URL</label>
+        <input type="text" id="backendUrl" value="http://localhost:3000">
+        <label>Staff Secret / Token</label>
+        <input type="password" id="staffSecret" placeholder="STAFF_API_SECRET">
+      </div>
+    </details>
+  </div>
+
+  <!-- Loaded Case Checklist Card -->
+  <div id="checklistCard" class="card" style="display: none;">
+    <label>Party & Property Checklist</label>
+    <div id="checklistContainer"></div>
+
+    <div class="toggle-row">
+      <input type="checkbox" id="chkAutoAdd" style="width: auto; margin: 0;">
+      <label for="chkAutoAdd" style="margin: 0; text-transform: none; cursor: pointer; color: #0f172a;">
+        Auto-click Add after filling party (draft only)
+      </label>
+    </div>
+
+    <button id="btnFillPage" class="btn-primary" style="margin-top: 6px;">
+      ⚡ Fill Current Page (Auto-Detect)
+    </button>
+
+    <div style="display: flex; gap: 4px; margin-top: 5px;">
+      <select id="selectParty" style="margin-bottom: 0; flex: 1;">
+        <option value="owner">Fill Owner (Licensor)</option>
+      </select>
+      <button id="btnFillParty" class="btn-secondary" style="width: auto;">Fill Party</button>
+    </div>
+  </div>
+
+  <!-- Actions Card -->
+  <div class="card">
+    <button id="btnCaptureGrn" class="btn-amber">
+      🎯 Capture GRN / Token No from Header
+    </button>
+    <button id="btnScanPage" class="btn-secondary">
+      🔍 Scan This Page (Dump Controls)
+    </button>
+  </div>
+
+  <!-- Inspection & Results Box -->
+  <div class="card">
+    <label>Fill Results & Verification</label>
+    <div id="resultsBox" class="results-box">Ready. Load a case to begin.</div>
+  </div>
+
+  <script src="popup.js"></script>
 </body>
 </html>
