@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processDocumentWithGemini } from '@/lib/documentExtractor';
+import { checkRateLimit } from '@/lib/rateLimiter';
 import { DocType } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
 export async function POST(req: NextRequest) {
+  const { allowed } = checkRateLimit(req, 25, 5 * 60 * 1000);
+  if (!allowed) {
+    return NextResponse.json(
+      {
+        fields: {},
+        confidence: 0,
+        warnings: ['Rate limit exceeded. Please wait a few minutes before extracting more documents.'],
+      },
+      { status: 429 }
+    );
+  }
   try {
     let fileBase64 = '';
     let mimeType = 'image/jpeg';

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AgreementCase, CaseStatus } from '@/types';
 import { calculateTotalAgreementFee } from '@/lib/calculator';
+import { supabase } from '@/lib/supabaseClient';
 import {
   FileSpreadsheet,
   FileText,
@@ -12,21 +13,52 @@ import {
   RefreshCw,
   Search,
   Building,
-  ExternalLink
+  ExternalLink,
+  CheckCircle2,
+  AlertCircle,
+  KeyRound,
+  LogOut,
+  Edit,
+  Save,
+  Check,
 } from 'lucide-react';
 
 export default function StaffDashboard() {
+  // Staff Auth State
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [emailInput, setEmailInput] = useState<string>('');
+  const [passwordInput, setPasswordInput] = useState<string>('');
+  const [loginError, setLoginError] = useState<string>('');
+  const [loginLoading, setLoginLoading] = useState<boolean>(false);
+
+  // Cases state
   const [cases, setCases] = useState<AgreementCase[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState<boolean>(false);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   // Modals
   const [selectedCase, setSelectedCase] = useState<AgreementCase | null>(null);
-  const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
+  const [showEditModal, setShowEditModal] = useState<boolean>(false);
+  const [showGrnModal, setShowGrnModal] = useState<boolean>(false);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
 
-  // Quick Add Form State
+  // Edit Case Form State
+  const [editCaseData, setEditCaseData] = useState<Partial<AgreementCase>>({});
+  const [savingEdit, setSavingEdit] = useState<boolean>(false);
+
+  // GRN Modal State
+  const [grnInput, setGrnInput] = useState<string>('');
+  const [prnInput, setPrnInput] = useState<string>('');
+  const [igrPasswordInput, setIgrPasswordInput] = useState<string>('');
+  const [receiptDateInput, setReceiptDateInput] = useState<string>('');
+  const [savingGrn, setSavingGrn] = useState<boolean>(false);
+
+  // Action feedback
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  // Quick Add State
   const [quickMobile, setQuickMobile] = useState('');
   const [quickLandlordName, setQuickLandlordName] = useState('');
   const [quickTenantName, setQuickTenantName] = useState('');
@@ -35,13 +67,51 @@ export default function StaffDashboard() {
   const [quickFlat, setQuickFlat] = useState('Room No-1');
   const [quickBuilding, setQuickBuilding] = useState('Gajanan Pride Bldg');
 
+  // Check Supabase session on mount
+  useEffect(() => {
+    const checkSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setCurrentUser(session.user);
+        }
+      } catch (err) {
+        console.warn('Session check notice:', err);
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    checkSession();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setCurrentUser(session?.user || null);
+    });
+
+    return () => {
+      subscription?.unsubscribe();
+    };
+  }, []);
+
+  // Helper for authorized fetch
+  const authFetch = async (url: string, options: RequestInit = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = new Headers(options.headers || {});
+    if (session?.access_token) {
+      headers.set('Authorization', `Bearer ${session.access_token}`);
+    }
+    return fetch(url, { ...options, headers });
+  };
+
   const fetchCases = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/agreements');
+      const res = await authFetch('/api/agreements');
       const data = await res.json();
       if (data.success) {
         setCases(data.cases || []);
+      } else if (res.status === 401) {
+        setLoginError('Staff authorization required or email not on allow-list.');
       }
     } catch (err) {
       console.error('Failed to fetch cases', err);
@@ -51,23 +121,151 @@ export default function StaffDashboard() {
   };
 
   useEffect(() => {
-    fetchCases();
-  }, []);
+    if (currentUser) {
+      fetchCases();
+    }
+  }, [currentUser]);
 
-  // Filter cases
-  const filteredCases = cases.filter((c) => {
-    const matchesSearch =
-      c.tokenNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.landlord?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.mobileNumber.includes(searchTerm);
-    const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
+  // Handle Staff Login
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginLoading(true);
+    setLoginError('');
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailInput.trim(),
+        password: passwordInput,
+      });
+
+      if (error) {
+        setLoginError(error.message);
+      } else if (data.user) {
+        setCurrentUser(data.user);
+      }
+    } catch (err: any) {
+      setLoginError(err?.message || 'Login failed.');
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setCurrentUser(null);
+    setCases([]);
+  };
+
+  // Re-sync specific case to Google Sheet
+  const handleResyncSheet = async (tokenNumber: string) => {
+    setActionNotice(`Syncing case ${tokenNumber} to Google Sheet...`);
+    try {
+      const res = await authFetch(`/api/cases/${tokenNumber}/sync`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setActionNotice(`✅ Case ${tokenNumber} synced to Google Sheet!`);
+        fetchCases();
+      } else {
+        alert(data.error || 'Failed to sync to Google Sheet.');
+      }
+    } catch (err) {
+      alert('Network error while syncing.');
+    } finally {
+      setTimeout(() => setActionNotice(null), 4000);
+    }
+  };
+
+  // Open Edit Case Modal
+  const handleOpenEdit = (item: AgreementCase) => {
+    setSelectedCase(item);
+    setEditCaseData({
+      status: item.status,
+      mobileNumber: item.mobileNumber,
+      landlord: { ...item.landlord },
+      tenants: item.tenants ? [...item.tenants] : [],
+      witnesses: item.witnesses ? [...item.witnesses] : [],
+      propertyDetails: { ...item.propertyDetails },
+      financials: { ...item.financials },
+    });
+    setShowEditModal(true);
+  };
+
+  // Save Case Edits (PATCH)
+  const handleSaveEdit = async () => {
+    if (!selectedCase) return;
+    setSavingEdit(true);
+
+    try {
+      const res = await authFetch(`/api/cases/${selectedCase.tokenNumber}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editCaseData),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setShowEditModal(false);
+        setActionNotice(`✅ Updated case ${selectedCase.tokenNumber} successfully!`);
+        fetchCases();
+      } else {
+        alert(data.error || 'Failed to save case changes.');
+      }
+    } catch (err) {
+      alert('Network error while saving changes.');
+    } finally {
+      setSavingEdit(false);
+      setTimeout(() => setActionNotice(null), 4000);
+    }
+  };
+
+  // Open GRN Modal
+  const handleOpenGrn = (item: AgreementCase) => {
+    setSelectedCase(item);
+    setGrnInput(item.grnDetails?.grnNo || '');
+    setPrnInput(item.grnDetails?.prnNo || '');
+    setIgrPasswordInput(item.grnDetails?.igrPassword || '');
+    setReceiptDateInput(item.grnDetails?.receiptDate || new Date().toISOString().split('T')[0]);
+    setShowGrnModal(true);
+  };
+
+  // Save GRN Details
+  const handleSaveGrn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCase) return;
+    setSavingGrn(true);
+
+    try {
+      const res = await authFetch(`/api/cases/${selectedCase.tokenNumber}/grn`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          grnNo: grnInput.trim(),
+          prnNo: prnInput.trim(),
+          igrPassword: igrPasswordInput.trim(),
+          receiptDate: receiptDateInput.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setShowGrnModal(false);
+        setActionNotice(`✅ GRN saved & updated in Google Sheet for ${selectedCase.tokenNumber}!`);
+        fetchCases();
+      } else {
+        alert(data.error || 'Failed to save GRN.');
+      }
+    } catch (err) {
+      alert('Error updating GRN details.');
+    } finally {
+      setSavingGrn(false);
+      setTimeout(() => setActionNotice(null), 4000);
+    }
+  };
 
   // Download DOCX Draft
   const handleDownloadDocx = async (caseData: AgreementCase) => {
     try {
-      const res = await fetch('/api/draft/docx', {
+      const res = await authFetch('/api/draft/docx', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(caseData),
@@ -86,7 +284,7 @@ export default function StaffDashboard() {
   // Download Agency Excel Ledger (.xlsx)
   const handleDownloadExcel = async () => {
     try {
-      const res = await fetch('/api/export/excel', {
+      const res = await authFetch('/api/export/excel', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cases: filteredCases }),
@@ -95,36 +293,36 @@ export default function StaffDashboard() {
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `Rent_Agreement_Agency_Ledger_${new Date().toISOString().split('T')[0]}.xlsx`;
+      a.download = `Rent_Agreement_Ledger_${new Date().toISOString().split('T')[0]}.xlsx`;
       a.click();
     } catch (err) {
-      alert('Error exporting agency Excel file.');
+      alert('Error exporting Excel ledger.');
     }
   };
 
   // Export IGR JSON
   const handleExportIGR = async (caseData: AgreementCase) => {
     try {
-      const res = await fetch('/api/export/igr', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(caseData),
-      });
+      const res = await authFetch(`/api/cases/${caseData.tokenNumber}/igr-export`);
       const data = await res.json();
       if (data.success) {
-        const blob = new Blob([JSON.stringify(data.igrPayload, null, 2)], { type: 'application/json' });
+        const blob = new Blob([JSON.stringify(data.igrPayload, null, 2)], {
+          type: 'application/json',
+        });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = `IGR_Payload_${caseData.tokenNumber}.json`;
         a.click();
+      } else {
+        alert(data.error || 'Failed to export IGR JSON.');
       }
     } catch (err) {
       alert('Error exporting IGR JSON.');
     }
   };
 
-  // Quick Add Form Submit
+  // Quick Add Case Submit
   const handleQuickAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -132,11 +330,21 @@ export default function StaffDashboard() {
 
       const payload = {
         mobileNumber: quickMobile.slice(0, 10),
-        landlord: { fullName: quickLandlordName || 'Landlord / Owner', aadhaar: '', nativeAddress: 'Pune' },
-        tenants: [{ fullName: quickTenantName || 'Tenant Name', aadhaar: '', nativeAddress: 'Pune' }],
+        landlord: {
+          fullName: quickLandlordName || 'Landlord / Owner',
+          aadhaar: '123456789012',
+          nativeAddress: 'Pune',
+        },
+        tenants: [
+          {
+            fullName: quickTenantName || 'Tenant Name',
+            aadhaar: '123456789012',
+            nativeAddress: 'Pune',
+          },
+        ],
         witnesses: [
-          { fullName: 'Witness 1', aadhaar: '', nativeAddress: 'Pune' },
-          { fullName: 'Witness 2', aadhaar: '', nativeAddress: 'Pune' }
+          { fullName: 'Witness 1', aadhaar: '123456789012', nativeAddress: 'Pune' },
+          { fullName: 'Witness 2', aadhaar: '123456789012', nativeAddress: 'Pune' },
         ],
         propertyDetails: {
           propertyType: 'Flat',
@@ -147,18 +355,18 @@ export default function StaffDashboard() {
           areaSqFt: '250',
           village: 'Wagholi',
           city: 'Pune',
-          pincode: '412207'
+          pincode: '412207',
         },
         financials: {
           rent: Number(quickRent),
           deposit: Number(quickDeposit),
           tenureMonths: 11,
           startDate: new Date().toISOString().split('T')[0],
-          fee: computedFee
+          fee: computedFee,
         },
       };
 
-      const res = await fetch('/api/agreements', {
+      const res = await authFetch('/api/agreements', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -167,14 +375,27 @@ export default function StaffDashboard() {
       const resData = await res.json();
       if (resData.success) {
         setShowAddModal(false);
+        setActionNotice(`✅ Added case ${resData.tokenNumber} successfully!`);
         fetchCases();
+      } else {
+        alert(resData.error || 'Failed to create case.');
       }
     } catch (err) {
       alert('Error adding quick case.');
+    } finally {
+      setTimeout(() => setActionNotice(null), 4000);
     }
   };
 
-  // Status badge styling in light mode
+  const filteredCases = cases.filter((c) => {
+    const matchesSearch =
+      c.tokenNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.landlord?.fullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      c.mobileNumber?.includes(searchTerm);
+    const matchesStatus = statusFilter === 'ALL' || c.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
   const getStatusBadge = (status: CaseStatus) => {
     switch (status) {
       case 'Completed':
@@ -183,13 +404,92 @@ export default function StaffDashboard() {
         return 'bg-amber-100 text-amber-800 border-amber-300';
       case 'Draft Ready':
         return 'bg-blue-100 text-blue-800 border-blue-300';
+      case 'Docs Uploaded':
+        return 'bg-teal-100 text-teal-800 border-teal-300';
       default:
         return 'bg-slate-100 text-slate-700 border-slate-300';
     }
   };
 
+  // If loading session
+  if (authLoading) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center text-slate-500 text-xs font-semibold">
+        Verifying staff session...
+      </div>
+    );
+  }
+
+  // If Not Authenticated: Render Login Card
+  if (!currentUser) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16">
+        <div className="bg-white p-8 rounded-2xl border border-slate-200 shadow-md space-y-6">
+          <div className="text-center space-y-2">
+            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mx-auto border border-emerald-100">
+              <KeyRound className="w-6 h-6" />
+            </div>
+            <h2 className="text-lg font-bold text-slate-900">Staff Portal Login</h2>
+            <p className="text-xs text-slate-500">
+              Enter allow-listed staff credentials to manage agreements, sync sheets, and export IGR tokens.
+            </p>
+          </div>
+
+          {loginError && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-xs font-semibold flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+              <span>{loginError}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleLogin} className="space-y-4 text-xs">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Staff Email Address</label>
+              <input
+                type="email"
+                required
+                value={emailInput}
+                onChange={(e) => setEmailInput(e.target.value)}
+                placeholder="staff@agency.com"
+                className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs"
+              />
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Password</label>
+              <input
+                type="password"
+                required
+                value={passwordInput}
+                onChange={(e) => setPasswordInput(e.target.value)}
+                placeholder="••••••••"
+                className="w-full glass-input px-3.5 py-2.5 rounded-xl text-xs"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loginLoading}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm flex items-center justify-center gap-2"
+            >
+              {loginLoading ? 'Authenticating...' : 'Sign In to Staff Panel'}
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Staff Authenticated Dashboard View
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      {/* Toast Notice */}
+      {actionNotice && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-lg border border-slate-700 flex items-center gap-2">
+          <span>{actionNotice}</span>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
         <div>
@@ -198,24 +498,32 @@ export default function StaffDashboard() {
             Pune Agency Staff Dashboard
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Live Agreement Queue, Gemini OCR Data Verification & 12-Column Ledger Sync
+            Logged in as <span className="font-semibold text-slate-800">{currentUser.email}</span> (Allow-listed Staff)
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <button
             onClick={handleDownloadExcel}
-            className="px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-sm"
+            className="px-3.5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-sm"
           >
             <FileSpreadsheet className="w-4 h-4" />
-            Export 12-Col Excel (.xlsx)
+            Export .xlsx (ExcelJS)
           </button>
           <button
             onClick={() => setShowAddModal(true)}
-            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-2 transition shadow-sm"
+            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition shadow-sm"
           >
             <Plus className="w-4 h-4" />
             Add New Case
+          </button>
+          <button
+            onClick={handleLogout}
+            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs rounded-xl flex items-center gap-1.5 transition border border-slate-200"
+            title="Sign Out"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Sign Out
           </button>
         </div>
       </div>
@@ -226,38 +534,41 @@ export default function StaffDashboard() {
           <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by Token, Owner, Mobile..."
+            placeholder="Search Token, Owner, Mobile..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full glass-input pl-9 pr-4 py-2.5 rounded-xl text-xs"
+            className="w-full glass-input pl-9 pr-4 py-2 rounded-xl text-xs"
           />
         </div>
 
         <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto">
           <span className="text-xs text-slate-500 font-semibold mr-1">Status:</span>
-          {['ALL', 'Docs Uploaded', 'AI Processing', 'Verification Required', 'Draft Ready', 'Completed'].map((st) => (
-            <button
-              key={st}
-              onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition border ${
-                statusFilter === st
-                  ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
-                  : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
-              }`}
-            >
-              {st}
-            </button>
-          ))}
+          {['ALL', 'Docs Uploaded', 'AI Processing', 'Verification Required', 'Draft Ready', 'Completed'].map(
+            (st) => (
+              <button
+                key={st}
+                onClick={() => setStatusFilter(st)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition border ${
+                  statusFilter === st
+                    ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                {st}
+              </button>
+            )
+          )}
           <button
             onClick={fetchCases}
             className="p-2 text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 ml-1"
+            title="Refresh cases"
           >
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Queue Table */}
+      {/* Cases Queue Table */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
@@ -266,9 +577,9 @@ export default function StaffDashboard() {
                 <th className="p-4">Token Number</th>
                 <th className="p-4">Owner (Landlord)</th>
                 <th className="p-4">Tenants</th>
-                <th className="p-4">Property & Location</th>
+                <th className="p-4">Property</th>
                 <th className="p-4">Rent / Deposit</th>
-                <th className="p-4">Calculated Total Fee</th>
+                <th className="p-4">Sheet Sync</th>
                 <th className="p-4">Status</th>
                 <th className="p-4 text-right">Actions</th>
               </tr>
@@ -277,158 +588,413 @@ export default function StaffDashboard() {
               {filteredCases.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-slate-500">
-                    No rent agreement cases found in queue. Click "+ Add New Case" to register.
+                    No rent agreement cases found in queue.
                   </td>
                 </tr>
               ) : (
-                filteredCases.map((item) => {
-                  const calculatedFee = item.financials?.fee || calculateTotalAgreementFee(item.financials?.rent || 0, item.financials?.deposit || 0, item.financials?.tenureMonths || 11).totalAmount;
-                  return (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition">
-                      <td className="p-4 font-extrabold text-emerald-700">{item.tokenNumber}</td>
-                      <td className="p-4">
-                        <div className="font-bold text-slate-900">{item.landlord?.fullName || 'Owner Name'}</div>
-                        <div className="text-[11px] text-slate-500">{item.landlord?.aadhaar || 'N/A'}</div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-semibold text-slate-800">
-                          {item.tenants?.[0]?.fullName || 'Tenant Name'}
-                        </div>
-                        <div className="text-[11px] text-slate-500">
-                          {item.tenants?.length || 1} Tenant(s) Registered
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-medium text-slate-800">
-                          {item.propertyDetails?.flatNo}, {item.propertyDetails?.buildingName}
-                        </div>
-                        <div className="text-[11px] text-slate-500">{item.propertyDetails?.village || 'Wagholi, Pune'}</div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-bold text-emerald-700">₹ {item.financials?.rent} /m</div>
-                        <div className="text-[11px] text-slate-500">Deposit: ₹ {item.financials?.deposit}</div>
-                      </td>
-                      <td className="p-4">
-                        <div className="font-bold text-slate-900 bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 inline-block">
-                          ₹ {calculatedFee.toLocaleString('en-IN')}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${getStatusBadge(item.status)}`}>
-                          {item.status}
+                filteredCases.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-50/80 transition">
+                    <td className="p-4 font-extrabold text-emerald-700 whitespace-nowrap">
+                      {item.tokenNumber}
+                    </td>
+
+                    <td className="p-4">
+                      <div className="font-bold text-slate-900">{item.landlord?.fullName || 'Owner Name'}</div>
+                      <div className="text-[11px] text-slate-500">{item.mobileNumber}</div>
+                    </td>
+
+                    <td className="p-4">
+                      <div className="font-semibold text-slate-800">
+                        {item.tenants?.[0]?.fullName || 'Tenant Name'}
+                      </div>
+                      <div className="text-[11px] text-slate-500">
+                        {item.tenants?.length || 1} Tenant(s)
+                      </div>
+                    </td>
+
+                    <td className="p-4">
+                      <div className="font-medium text-slate-800 truncate max-w-[180px]">
+                        {item.propertyDetails?.flatNo ? `${item.propertyDetails.flatNo}, ` : ''}
+                        {item.propertyDetails?.buildingName}
+                      </div>
+                      <div className="text-[11px] text-slate-500">{item.propertyDetails?.village || 'Pune'}</div>
+                    </td>
+
+                    <td className="p-4 whitespace-nowrap">
+                      <div className="font-bold text-emerald-700">₹ {item.financials?.rent} /m</div>
+                      <div className="text-[11px] text-slate-500">Dep: ₹ {item.financials?.deposit}</div>
+                    </td>
+
+                    <td className="p-4 whitespace-nowrap">
+                      {item.syncedToSheets ? (
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600" /> Synced
                         </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            onClick={() => {
-                              setSelectedCase(item);
-                              setShowReviewModal(true);
-                            }}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-lg flex items-center gap-1 border border-slate-200 transition"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-emerald-600" />
-                            Review
-                          </button>
-                          <button
-                            onClick={() => handleDownloadDocx(item)}
-                            className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200 transition"
-                            title="Download Word Draft (.docx)"
-                          >
-                            <FileText className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleExportIGR(item)}
-                            className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition"
-                            title="Export IGR JSON"
-                          >
-                            <ExternalLink className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
+                      ) : (
+                        <button
+                          onClick={() => handleResyncSheet(item.tokenNumber)}
+                          className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200 transition"
+                          title="Click to sync with Google Sheet"
+                        >
+                          <RefreshCw className="w-3 h-3 text-amber-600" /> Re-sync
+                        </button>
+                      )}
+                    </td>
+
+                    <td className="p-4 whitespace-nowrap">
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${getStatusBadge(item.status)}`}>
+                        {item.status}
+                      </span>
+                    </td>
+
+                    <td className="p-4 text-right whitespace-nowrap">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <button
+                          onClick={() => handleOpenEdit(item)}
+                          className="px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold rounded-lg flex items-center gap-1 border border-slate-200 transition"
+                          title="Edit any field"
+                        >
+                          <Edit className="w-3.5 h-3.5 text-slate-600" />
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => handleOpenGrn(item)}
+                          className="px-2 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold rounded-lg border border-amber-200 transition"
+                          title="Enter GRN/PRN (updates yellow sheet cell)"
+                        >
+                          GRN/PRN
+                        </button>
+                        <button
+                          onClick={() => handleExportIGR(item)}
+                          className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg border border-indigo-200 transition"
+                          title="Export IGR JSON"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDownloadDocx(item)}
+                          className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg border border-emerald-200 transition"
+                          title="Download Word (.docx)"
+                        >
+                          <FileText className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Review Side-by-Side Modal */}
-      {showReviewModal && selectedCase && (
+      {/* EDIT CASE MODAL */}
+      {showEditModal && selectedCase && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white max-w-4xl w-full max-h-[90vh] rounded-2xl overflow-y-auto p-6 space-y-6 shadow-xl border border-slate-200">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-4">
+          <div className="bg-white max-w-3xl w-full max-h-[90vh] rounded-2xl overflow-y-auto p-6 space-y-6 shadow-xl border border-slate-200">
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  Review Extracted Data — {selectedCase.tokenNumber}
+                  Edit Case Details — {selectedCase.tokenNumber}
                 </h3>
-                <p className="text-xs text-slate-500">
-                  Side-by-side verification of OCR text against uploaded document cards.
-                </p>
+                <p className="text-xs text-slate-500">Staff can update any client, property, or lease values.</p>
               </div>
-              <button onClick={() => setShowReviewModal(false)} className="text-slate-400 hover:text-slate-700 text-xl font-bold">&times;</button>
+              <button onClick={() => setShowEditModal(false)} className="text-slate-400 text-xl font-bold">&times;</button>
             </div>
 
-            {/* Split View */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-4 text-xs">
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                  <h4 className="font-bold text-emerald-800 uppercase tracking-wider text-[11px]">Owner Details</h4>
-                  <div><span className="text-slate-500">Name:</span> {selectedCase.landlord?.fullName}</div>
-                  <div><span className="text-slate-500">Aadhaar:</span> {selectedCase.landlord?.aadhaar}</div>
-                  <div><span className="text-slate-500">PAN:</span> {selectedCase.landlord?.pan}</div>
-                  <div><span className="text-slate-500">Address:</span> {selectedCase.landlord?.nativeAddress}</div>
+            <div className="space-y-4 text-xs">
+              {/* Status & Mobile */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase text-[10px] mb-1">Status</label>
+                  <select
+                    value={editCaseData.status || selectedCase.status}
+                    onChange={(e) => setEditCaseData({ ...editCaseData, status: e.target.value as CaseStatus })}
+                    className="w-full glass-input px-3 py-2 rounded-xl"
+                  >
+                    <option value="Docs Uploaded">Docs Uploaded</option>
+                    <option value="AI Processing">AI Processing</option>
+                    <option value="Verification Required">Verification Required</option>
+                    <option value="Draft Ready">Draft Ready</option>
+                    <option value="Biometrics Scheduled">Biometrics Scheduled</option>
+                    <option value="Completed">Completed</option>
+                  </select>
                 </div>
-
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                  <h4 className="font-bold text-emerald-800 uppercase tracking-wider text-[11px]">Tenants Details</h4>
-                  {selectedCase.tenants?.map((t, idx) => (
-                    <div key={idx} className="border-b border-slate-200 pb-2 last:border-0">
-                      <div><span className="text-slate-500">Tenant #{idx + 1}:</span> {t.fullName}</div>
-                      <div><span className="text-slate-500">Aadhaar:</span> {t.aadhaar} | <span className="text-slate-500">PAN:</span> {t.pan}</div>
-                      <div><span className="text-slate-500">Address:</span> {t.nativeAddress}</div>
-                    </div>
-                  ))}
+                <div>
+                  <label className="block font-bold text-slate-700 uppercase text-[10px] mb-1">Client Mobile</label>
+                  <input
+                    type="tel"
+                    maxLength={10}
+                    value={editCaseData.mobileNumber || ''}
+                    onChange={(e) => setEditCaseData({ ...editCaseData, mobileNumber: e.target.value })}
+                    className="w-full glass-input px-3 py-2 rounded-xl"
+                  />
                 </div>
               </div>
 
-              <div className="bg-slate-50 rounded-xl border border-slate-200 p-6 flex flex-col items-center justify-center text-center space-y-3">
-                <FileText className="w-12 h-12 text-emerald-600" />
-                <span className="text-xs font-bold text-slate-800">Document Scans Loaded</span>
-                <p className="text-[11px] text-slate-500">
-                  Landlord & Tenant Aadhaar, PAN, Witness Aadhaar (Front/Back) & Electricity bill processed by Gemini Vision OCR.
-                </p>
-                <div className="px-3 py-1 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full text-[10px] font-bold">
-                  Total Calculated Fee: ₹ {(selectedCase.financials?.fee || calculateTotalAgreementFee(selectedCase.financials?.rent || 0, selectedCase.financials?.deposit || 0, selectedCase.financials?.tenureMonths || 11).totalAmount).toLocaleString('en-IN')}
+              {/* Landlord Section */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <span className="font-bold text-emerald-800 uppercase text-xs block">Landlord Details</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Full Name</label>
+                    <input
+                      type="text"
+                      value={editCaseData.landlord?.fullName || ''}
+                      onChange={(e) =>
+                        setEditCaseData({
+                          ...editCaseData,
+                          landlord: { ...editCaseData.landlord, fullName: e.target.value } as any,
+                        })
+                      }
+                      className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Aadhaar</label>
+                    <input
+                      type="text"
+                      value={editCaseData.landlord?.aadhaar || ''}
+                      onChange={(e) =>
+                        setEditCaseData({
+                          ...editCaseData,
+                          landlord: { ...editCaseData.landlord, aadhaar: e.target.value } as any,
+                        })
+                      }
+                      className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">PAN</label>
+                    <input
+                      type="text"
+                      value={editCaseData.landlord?.pan || ''}
+                      onChange={(e) =>
+                        setEditCaseData({
+                          ...editCaseData,
+                          landlord: { ...editCaseData.landlord, pan: e.target.value.toUpperCase() } as any,
+                        })
+                      }
+                      className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Address</label>
+                  <input
+                    type="text"
+                    value={editCaseData.landlord?.nativeAddress || ''}
+                    onChange={(e) =>
+                      setEditCaseData({
+                        ...editCaseData,
+                        landlord: { ...editCaseData.landlord, nativeAddress: e.target.value } as any,
+                      })
+                    }
+                    className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                  />
+                </div>
+              </div>
+
+              {/* Property Details */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+                <span className="font-bold text-emerald-800 uppercase text-xs block">Property Details</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Building Name</label>
+                    <input
+                      type="text"
+                      value={editCaseData.propertyDetails?.buildingName || ''}
+                      onChange={(e) =>
+                        setEditCaseData({
+                          ...editCaseData,
+                          propertyDetails: { ...editCaseData.propertyDetails, buildingName: e.target.value } as any,
+                        })
+                      }
+                      className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Flat No</label>
+                    <input
+                      type="text"
+                      value={editCaseData.propertyDetails?.flatNo || ''}
+                      onChange={(e) =>
+                        setEditCaseData({
+                          ...editCaseData,
+                          propertyDetails: { ...editCaseData.propertyDetails, flatNo: e.target.value } as any,
+                        })
+                      }
+                      className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Area (Sq.Ft)</label>
+                    <input
+                      type="text"
+                      value={editCaseData.propertyDetails?.areaSqFt || ''}
+                      onChange={(e) =>
+                        setEditCaseData({
+                          ...editCaseData,
+                          propertyDetails: { ...editCaseData.propertyDetails, areaSqFt: e.target.value } as any,
+                        })
+                      }
+                      className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Financials */}
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Monthly Rent (₹)</label>
+                  <input
+                    type="number"
+                    value={editCaseData.financials?.rent || 0}
+                    onChange={(e) =>
+                      setEditCaseData({
+                        ...editCaseData,
+                        financials: { ...editCaseData.financials, rent: Number(e.target.value) } as any,
+                      })
+                    }
+                    className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Deposit (₹)</label>
+                  <input
+                    type="number"
+                    value={editCaseData.financials?.deposit || 0}
+                    onChange={(e) =>
+                      setEditCaseData({
+                        ...editCaseData,
+                        financials: { ...editCaseData.financials, deposit: Number(e.target.value) } as any,
+                      })
+                    }
+                    className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Tenure (Months)</label>
+                  <input
+                    type="number"
+                    value={editCaseData.financials?.tenureMonths || 11}
+                    onChange={(e) =>
+                      setEditCaseData({
+                        ...editCaseData,
+                        financials: { ...editCaseData.financials, tenureMonths: Number(e.target.value) } as any,
+                      })
+                    }
+                    className="w-full glass-input px-2.5 py-1.5 rounded-lg"
+                  />
                 </div>
               </div>
             </div>
 
-            <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
+            <div className="flex justify-end gap-3 pt-3 border-t border-slate-200">
               <button
-                onClick={() => setShowReviewModal(false)}
-                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-semibold"
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold text-xs"
               >
-                Close
+                Cancel
               </button>
               <button
-                onClick={() => {
-                  handleDownloadDocx(selectedCase);
-                  setShowReviewModal(false);
-                }}
-                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow"
+                type="button"
+                disabled={savingEdit}
+                onClick={handleSaveEdit}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow"
               >
-                <Download className="w-4 h-4" />
-                Download Agreement (.docx)
+                <Save className="w-4 h-4" />
+                {savingEdit ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Quick Add Case Modal */}
+      {/* ENTER GRN/PRN MODAL */}
+      {showGrnModal && selectedCase && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-2xl p-6 space-y-5 border border-slate-200 shadow-xl">
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Enter Govt GRN / PRN</h3>
+                <p className="text-[11px] text-slate-500">Case: {selectedCase.tokenNumber}</p>
+              </div>
+              <button onClick={() => setShowGrnModal(false)} className="text-slate-400 text-lg font-bold">&times;</button>
+            </div>
+
+            <p className="text-xs text-slate-600 bg-amber-50 p-3 rounded-xl border border-amber-200 leading-relaxed">
+              Entering the government GRN/PRN here saves it to <strong>grn_details</strong> and immediately updates the yellow cell in your Google Sheet!
+            </p>
+
+            <form onSubmit={handleSaveGrn} className="space-y-3.5 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">GRN Number</label>
+                <input
+                  type="text"
+                  value={grnInput}
+                  onChange={(e) => setGrnInput(e.target.value)}
+                  placeholder="e.g. 0726305705334"
+                  className="w-full glass-input px-3 py-2 rounded-xl font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">PRN / Receipt Number</label>
+                <input
+                  type="text"
+                  value={prnInput}
+                  onChange={(e) => setPrnInput(e.target.value)}
+                  placeholder="PRN or fee receipt number"
+                  className="w-full glass-input px-3 py-2 rounded-xl font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">IGR Portal Password (Optional)</label>
+                <input
+                  type="text"
+                  value={igrPasswordInput}
+                  onChange={(e) => setIgrPasswordInput(e.target.value)}
+                  placeholder="e.g. MH007372620202627P"
+                  className="w-full glass-input px-3 py-2 rounded-xl font-mono text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">Receipt Date</label>
+                <input
+                  type="date"
+                  value={receiptDateInput}
+                  onChange={(e) => setReceiptDateInput(e.target.value)}
+                  className="w-full glass-input px-3 py-2 rounded-xl text-xs"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowGrnModal(false)}
+                  className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingGrn}
+                  className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow"
+                >
+                  {savingGrn ? 'Saving & Syncing...' : 'Save & Update Sheet'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* QUICK ADD MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white max-w-lg w-full rounded-2xl p-6 space-y-5 border border-slate-200 shadow-xl">
@@ -439,13 +1005,13 @@ export default function StaffDashboard() {
 
             <form onSubmit={handleQuickAdd} className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Client Mobile Number (Max 10 Digits)</label>
+                <label className="block text-slate-700 font-semibold mb-1">Client Mobile Number</label>
                 <input
                   type="text"
                   maxLength={10}
                   value={quickMobile}
                   onChange={(e) => setQuickMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  placeholder="Enter Client Mobile Number"
+                  placeholder="Enter 10-digit Mobile"
                   className="w-full glass-input px-3 py-2 rounded-xl"
                 />
               </div>

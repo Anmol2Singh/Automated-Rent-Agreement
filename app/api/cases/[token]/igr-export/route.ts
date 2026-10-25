@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServiceSupabase } from '@/lib/supabaseServer';
 import { splitNameMaharashtrian, deriveSalutation } from '@/lib/documentExtractor';
+import { verifyStaffAuth } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,6 +9,11 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { token: string } }
 ) {
+  const auth = await verifyStaffAuth(req);
+  if (!auth.authorized) {
+    return NextResponse.json({ success: false, error: auth.error || 'Unauthorized staff access.' }, { status: 401 });
+  }
+
   const token = params.token;
   if (!token) {
     return NextResponse.json({ success: false, error: 'Token is required' }, { status: 400 });

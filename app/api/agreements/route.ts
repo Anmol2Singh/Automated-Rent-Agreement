@@ -4,11 +4,22 @@ import { generateTokenNumber } from '@/lib/token';
 import { uploadAgreementFilesToStorage } from '@/lib/storageUploader';
 import { sendToGoogleSheetsWebhook } from '@/lib/sheetsExporter';
 import { safeLogAgreement } from '@/lib/logger';
+import { verifyStaffAuth } from '@/lib/auth';
+import { checkRateLimit } from '@/lib/rateLimiter';
 import { AgreementCase } from '@/types';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Staff authentication check
+  const auth = await verifyStaffAuth(req);
+  if (!auth.authorized) {
+    return NextResponse.json(
+      { success: false, error: auth.error || 'Unauthorized staff access.' },
+      { status: 401 }
+    );
+  }
+
   const supabase = getServiceSupabase();
 
   try {
@@ -47,6 +58,14 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  // Rate limit public case creation: max 15 per 10 mins
+  const { allowed } = checkRateLimit(req, 15, 10 * 60 * 1000);
+  if (!allowed) {
+    return NextResponse.json(
+      { success: false, error: 'Too many submissions from this network. Please wait a few minutes.' },
+      { status: 429 }
+    );
+  }
   const supabase = getServiceSupabase();
 
   try {
